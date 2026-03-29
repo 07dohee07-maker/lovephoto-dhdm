@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Our Moment | 도희 & 동민</title>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-storage-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;500;700&display=swap');
+        :root { --accent: #ff8a80; --bg: #ffffff; --card: #f9f9f9; --text: #222; --sub: #999; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: 'Pretendard', sans-serif; }
+        body { background-color: var(--bg); margin: 0; display: flex; justify-content: center; color: var(--text); overflow-x: hidden; }
+        .app-container { width: 100%; max-width: 450px; min-height: 100vh; padding: 50px 20px; display: flex; flex-direction: column; }
+        .header { margin-bottom: 30px; text-align: center;}
+        .header h1 { font-size: 30px; font-weight: 700; margin: 0; letter-spacing: -1px; }
+        .header p { font-size: 15px; color: var(--sub); margin-top: 8px; font-weight: 300; }
+        input[type="text"] { width: 100%; padding: 16px; border: 1px solid #eee; border-radius: 14px; font-size: 16px; margin-bottom: 12px; background: var(--card); transition: 0.3s; }
+        .btn { width: 100%; padding: 16px; border-radius: 14px; font-size: 16px; font-weight: 600; cursor: pointer; border: none; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-main { background: var(--accent); color: white; box-shadow: 0 6px 12px rgba(255, 138, 128, 0.2); }
+        .btn-sub { background: var(--card); color: var(--text); margin-top: 10px; border: 1px solid #eee; }
+        .section { margin-top: 40px; }
+        .section-label { font-size: 12px; color: var(--accent); font-weight: 700; text-transform: uppercase; margin-bottom: 10px; display: block; opacity: 0.8;}
+        .game-box { background: var(--card); padding: 25px; border-radius: 20px; text-align: center; border: 1px solid #eee; }
+        #scoreNum { font-size: 40px; font-weight: 700; margin: 5px 0; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; display: none; flex-direction: column; z-index: 1000; animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .modal-close { position: absolute; top: 15px; right: 15px; font-size: 20px; background: rgba(0,0,0,0.5); color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;}
+        .modal-content { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 30px; }
+        .modal-img { width: 100%; max-height: 60vh; object-fit: contain; border-radius: 16px; margin-bottom: 25px; background: #000; }
+        .hidden { display: none !important; }
+        .spinner { border: 2px solid #f3f3f3; border-top: 2px solid var(--accent); border-radius: 50%; width: 14px; height: 14px; animation: spin 1s linear infinite; display: none; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div id="loginSection">
+            <div class="header"><h1>Our Moment</h1><p>도희 ❤️ 동민 추억 저장소</p></div>
+            <input type="text" id="userName" placeholder="이름을 입력하세요 (도희/동민)" spellcheck="false">
+            <button class="btn btn-main" onclick="login()">입장하기</button>
+        </div>
+        <div id="mainSection" class="hidden">
+            <div class="header"><h1 id="welcomeTitle">Hello</h1><p>우리의 추억을 실시간으로 공유해요.</p></div>
+            <div class="section"><span class="section-label">Mini Game</span>
+                <div class="game-box"><div id="scoreNum">0</div><button class="btn btn-main" id="gameBtn" onclick="startGame()">터치 시작</button><p id="highScore" style="font-size:13px; color:var(--sub); margin-top:10px;">기록 로딩중...</p></div>
+            </div>
+            <div class="section"><span class="section-label">Memories</span>
+                <button class="btn btn-sub" id="uploadBtn" onclick="document.getElementById('fileInput').click()"><div class="spinner" id="uploadSpinner"></div><span id="uploadBtnText">📸 사진 추가하기</span></button>
+                <input type="file" id="fileInput" accept="image/*" multiple class="hidden" onchange="handleFiles(this.files)">
+                <p id="uploadStatus" style="font-size:12px; text-align:center; color:var(--accent); min-height:20px;"></p>
+                <button id="randomBtn" class="btn btn-main hidden" onclick="showRandomPhoto()" style="background:#333; margin-top:20px;">✨ 랜덤 추억 소환 (0)</button>
+            </div>
+        </div>
+    </div>
+    <div id="photoModal" class="modal">
+        <div class="modal-close" onclick="closeModal()">✕</div>
+        <div class="modal-content"><img id="randomPhoto" class="modal-img"><p style="font-size:18px;">이 날 기억나요? 🥰</p></div>
+    </div>
+
+    <script>
+        // ⚠️ 본인의 Firebase 정보로 정확히 채우세요
+        const firebaseConfig = {
+         apiKey: "AIzaSyAkRnDQnRbtgN1PzBkZ1cbHa8fqchQ6zrQ",
+  authDomain: "dohee-dongmin.firebaseapp.com",
+  databaseURL: "https://dohee-dongmin-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "dohee-dongmin",
+  storageBucket: "dohee-dongmin.firebasestorage.app",
+  messagingSenderId: "918584489743",
+  appId: "1:918584489743:web:98e8c2d62e2e0ce40e307a",
+  measurementId: "G-HMWH64E45M"
+
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const storage = firebase.storage();
+        let currentUser = "";
+        let allPhotos = [];
+        let score = 0;
+        let isPlaying = false;
+
+        function login() {
+            const name = document.getElementById('userName').value;
+            if (!name.trim()) return;
+            currentUser = name.trim();
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('mainSection').classList.remove('hidden');
+            document.getElementById('welcomeTitle').innerText = `${currentUser}의 기록`;
+            loadHighScore();
+            loadSharedPhotos();
+        }
+
+        function startGame() {
+            if (isPlaying) { score++; document.getElementById('scoreNum').innerText = score; return; }
+            isPlaying = true; score = 0;
+            document.getElementById('scoreNum').innerText = score;
+            document.getElementById('gameBtn').innerText = "빨리 터치!";
+            setTimeout(() => { isPlaying = false; document.getElementById('gameBtn').innerText = "다시 하기"; saveScore(score); }, 5000);
+        }
+
+        function saveScore(s) { database.ref('scores/' + currentUser).set({ score: s }); }
+
+        function loadHighScore() {
+            database.ref('scores').on('value', (s) => {
+                const d = s.val();
+                if (d) document.getElementById('highScore').innerText = "🏆 " + Object.entries(d).map(([n, o]) => `${n}: ${o.score}`).join(' | ');
+            });
+        }
+
+        // --- 수정된 handleFiles 함수 시작 ---
+        async function handleFiles(files) {
+            if (!files.length) return;
+            const status = document.getElementById('uploadStatus');
+            const spinner = document.getElementById('uploadSpinner');
+            const btnText = document.getElementById('uploadBtnText');
+            
+            spinner.style.display = "inline-block";
+            btnText.innerText = "저장 중...";
+            status.innerText = "추억을 담는 중입니다...";
+
+            for (let file of files) {
+                try {
+                    // Blob으로 감싸서 보안 우회 시도
+                    const blob = new Blob([file], { type: file.type });
+                    const uniqueName = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+                    const ref = storage.ref().child(`photos/${uniqueName}`);
+                    
+                    const snap = await ref.put(blob);
+                    const url = await snap.ref.getDownloadURL();
+                    
+                    await database.ref('shared_photos').push({ url: url });
+                } catch (e) {
+                    console.error("에러:", e);
+                    status.innerText = "서버 설정(CORS) 확인이 필요해요 ㅠㅠ";
+                    break; 
+                }
+            }
+            
+            status.innerText = "성공! ✨";
+            spinner.style.display = "none";
+            btnText.innerText = "📸 사진 추가하기";
+            document.getElementById('fileInput').value = "";
+        }
+        // --- 수정된 handleFiles 함수 끝 ---
+
+        function loadSharedPhotos() {
+            database.ref('shared_photos').on('value', (s) => {
+                const d = s.val();
+                allPhotos = d ? Object.values(d).map(p => p.url) : [];
+                document.getElementById('randomBtn').innerText = `✨ 랜덤 추억 소환 (${allPhotos.length})`;
+                if (allPhotos.length > 0) document.getElementById('randomBtn').classList.remove('hidden');
+            });
+        }
+
+        function showRandomPhoto() {
+            const url = allPhotos[Math.floor(Math.random() * allPhotos.length)];
+            document.getElementById('randomPhoto').src = url;
+            document.getElementById('photoModal').style.display = 'flex';
+        }
+
+        function closeModal() { document.getElementById('photoModal').style.display = 'none'; }
+    </script>
+</body>
+</html>
